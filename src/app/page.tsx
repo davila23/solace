@@ -1,40 +1,66 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
+import useSWR from "swr";
+
+// Define interfaces for type safety
+interface Advocate {
+  id?: number;
+  firstName: string;
+  lastName: string;
+  city: string;
+  degree: string;
+  specialties: string[];
+  yearsOfExperience: string;
+  phoneNumber: string;
+}
+
+interface AdvocatesResponse {
+  data: Advocate[];
+}
 
 export default function Home() {
-  const [advocates, setAdvocates] = useState([]);
-  const [filteredAdvocates, setFilteredAdvocates] = useState([]);
+  // Use SWR for data fetching with automatic caching and revalidation
+  const { data, error, isLoading } = useSWR<AdvocatesResponse>(
+    "/api/advocates", 
+    { revalidateOnFocus: true }
+  );
+  
+  const advocates = data?.data || [];
+  const [filteredAdvocates, setFilteredAdvocates] = useState<Advocate[]>(advocates);
 
-  useEffect(() => {
-    console.log("fetching advocates...");
-    fetch("/api/advocates").then((response) => {
-      response.json().then((jsonResponse) => {
-        setAdvocates(jsonResponse.data);
-        setFilteredAdvocates(jsonResponse.data);
-      });
-    });
-  }, []);
-
-  const onChange = (e) => {
+  const onChange = (e: ChangeEvent<HTMLInputElement>) => {
     const searchTerm = e.target.value;
 
-    document.getElementById("search-term").innerHTML = searchTerm;
+    const searchElement = document.getElementById("search-term");
+    if (searchElement) {
+      searchElement.innerHTML = searchTerm;
+    }
 
     console.log("filtering advocates...");
-    const filteredAdvocates = advocates.filter((advocate) => {
+    const filteredResults = advocates.filter((advocate) => {
       return (
         advocate.firstName.includes(searchTerm) ||
         advocate.lastName.includes(searchTerm) ||
         advocate.city.includes(searchTerm) ||
         advocate.degree.includes(searchTerm) ||
-        advocate.specialties.includes(searchTerm) ||
+        // Check if specialties is an array before using includes
+        (Array.isArray(advocate.specialties) 
+          ? advocate.specialties.some(s => s && typeof s === 'string' && s.includes(searchTerm))
+          : false) ||
         advocate.yearsOfExperience.includes(searchTerm)
       );
     });
 
-    setFilteredAdvocates(filteredAdvocates);
+    setFilteredAdvocates(filteredResults);
   };
+
+  // Effect to update filtered advocates when new data is loaded
+  useEffect(() => {
+    if (data?.data) {
+      setFilteredAdvocates(data.data);
+    }
+  }, [data]);
 
   const onClick = () => {
     console.log(advocates);
@@ -43,6 +69,19 @@ export default function Home() {
 
   return (
     <main style={{ margin: "24px" }}>
+      {/* Loading state */}
+      {isLoading && (
+        <div className="loading-container" style={{ textAlign: "center", padding: "20px" }}>
+          <p>Loading advocates...</p>
+        </div>
+      )}
+      
+      {/* Error state */}
+      {error && (
+        <div className="error-container" style={{ color: "red", padding: "20px" }}>
+          <p>Error loading data: {error.message}</p>
+        </div>
+      )}
       <h1>Solace Advocates</h1>
       <br />
       <br />
@@ -69,14 +108,14 @@ export default function Home() {
         <tbody>
           {filteredAdvocates.map((advocate) => {
             return (
-              <tr>
+              <tr key={advocate.id || `${advocate.firstName}-${advocate.lastName}-${advocate.phoneNumber}`}>
                 <td>{advocate.firstName}</td>
                 <td>{advocate.lastName}</td>
                 <td>{advocate.city}</td>
                 <td>{advocate.degree}</td>
                 <td>
                   {advocate.specialties.map((s) => (
-                    <div>{s}</div>
+                    <div key={s}>{s}</div>
                   ))}
                 </td>
                 <td>{advocate.yearsOfExperience}</td>
