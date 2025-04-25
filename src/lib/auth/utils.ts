@@ -10,7 +10,7 @@
  * @param password Plain text password
  * @returns Hashed password
  */
-export function hashPassword(password: string): string {
+function hashPassword(password: string): string {
   // Simple hash for demo (do NOT use in production)
   return Buffer.from(`hash_${password}`).toString('base64');
 }
@@ -21,7 +21,12 @@ export function hashPassword(password: string): string {
  * @param hash The stored hash
  * @returns true if the password matches the hash
  */
-export function verifyPassword(password: string, hash: string): boolean {
+function verifyPassword(password: string, hash: string): boolean {
   const calculatedHash = hashPassword(password);
   return calculatedHash === hash;
 }
+
+module.exports = {
+  hashPassword,
+  verifyPassword
+};

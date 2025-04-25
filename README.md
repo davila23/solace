@@ -124,9 +124,16 @@ npm install
 # Start PostgreSQL using Docker
 docker compose up -d
 
-# Run migrations and seed database
-npx drizzle-kit push
-npm run seed
+# Create a .env file with your database connection
+# Make sure DATABASE_URL is set correctly
+# Example: DATABASE_URL=postgresql://postgres:password@localhost/solaceassignment
+
+# Setup database (generates schema and seeds data)
+npm run db:setup
+
+# Or run each step separately if needed:
+# npm run db:generate    # Generate database schema
+# npm run db:seed        # Seed the database with initial data
 
 # Start development server
 npm run dev
