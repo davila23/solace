@@ -3,6 +3,7 @@ import { advocateService } from '../../../services/advocates';
 import { requireAdmin } from '../../../lib/auth/middleware';
 import { successResponse, errorResponse, handleApiError } from '../../../utils/api-response';
 import { validateAdvocateData } from '../../../utils/validation';
+import { notFound } from 'next/navigation';
 
 /**
  * @swagger
@@ -170,6 +171,173 @@ export async function POST(request: NextRequest): Promise<Response> {
       message: 'Advocate created successfully',
       advocate: newAdvocate
     }, 201);
+  } catch (error) {
+    // Transforms error to standardized API response
+    return handleApiError(error);
+  }
+}
+
+/**
+ * @swagger
+ * /api/advocates/{id}:
+ *   put:
+ *     tags: [Advocates]
+ *     summary: Update an existing advocate
+ *     description: Updates an existing healthcare advocate (admin only)
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Advocate ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               firstName:
+ *                 type: string
+ *               lastName:
+ *                 type: string
+ *               city:
+ *                 type: string
+ *               degree:
+ *                 type: string
+ *                 enum: [MD, PhD, MSW, LMFT, PsyD]
+ *               specialties:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               yearsOfExperience:
+ *                 type: integer
+ *               phoneNumber:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: Advocate updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 advocate:
+ *                   $ref: '#/components/schemas/Advocate'
+ *       400:
+ *         description: Invalid input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
+ *       404:
+ *         description: Advocate not found
+ */
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }): Promise<Response> {
+  try {
+    // Verifies user has admin permissions
+    const authResult = requireAdmin(request);
+    if (authResult) {
+      return authResult.error;
+    }
+
+    // Extract advocate ID from URL parameters
+    const id = parseInt(params.id, 10);
+    if (isNaN(id)) {
+      return errorResponse('Invalid advocate ID', 400);
+    }
+    
+    // Extracts advocate data from request body
+    const advocateData = await request.json();
+    
+    // Update advocate in database
+    try {
+      const updatedAdvocate = await advocateService.updateAdvocate(id, advocateData);
+      
+      // Returns success response with updated advocate
+      return successResponse({
+        message: 'Advocate updated successfully',
+        advocate: updatedAdvocate
+      });
+    } catch (error: any) {
+      if (error.message?.includes('not found')) {
+        return errorResponse(`Advocate with ID ${id} not found`, 404);
+      }
+      throw error;
+    }
+  } catch (error) {
+    // Transforms error to standardized API response
+    return handleApiError(error);
+  }
+}
+
+/**
+ * @swagger
+ * /api/advocates/{id}:
+ *   delete:
+ *     tags: [Advocates]
+ *     summary: Delete an advocate
+ *     description: Deletes an existing healthcare advocate (admin only)
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Advocate ID
+ *     responses:
+ *       200:
+ *         description: Advocate deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
+ *       404:
+ *         description: Advocate not found
+ */
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }): Promise<Response> {
+  try {
+    // Verifies user has admin permissions
+    const authResult = requireAdmin(request);
+    if (authResult) {
+      return authResult.error;
+    }
+
+    // Extract advocate ID from URL parameters
+    const id = parseInt(params.id, 10);
+    if (isNaN(id)) {
+      return errorResponse('Invalid advocate ID', 400);
+    }
+    
+    // Delete advocate from database
+    const deleted = await advocateService.deleteAdvocate(id);
+    
+    if (!deleted) {
+      return errorResponse(`Advocate with ID ${id} not found`, 404);
+    }
+    
+    // Returns success response
+    return successResponse({
+      message: 'Advocate deleted successfully'
+    });
   } catch (error) {
     // Transforms error to standardized API response
     return handleApiError(error);

@@ -1,17 +1,21 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '../../../../components/layout/Header';
 import Footer from '../../../../components/layout/Footer';
 import Navigation from '../../../../components/layout/Navigation';
 
 /**
- * Admin page to add a new advocate
+ * Admin page to add or edit an advocate
  * Only accessible to users with admin role
  */
-export default function AddAdvocatePage() {
+export default function AddEditAdvocatePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const advocateId = searchParams.get('id');
+  const isEditMode = !!advocateId;
+  
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -33,6 +37,7 @@ export default function AddAdvocatePage() {
   
   const [selectedSpecialties, setSelectedSpecialties] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(isEditMode);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
@@ -54,6 +59,46 @@ export default function AddAdvocatePage() {
         : [...prev, specialty]
     );
   };
+
+  /**
+   * Load advocate data when in edit mode
+   */
+  useEffect(() => {
+    if (isEditMode) {
+      const fetchAdvocate = async () => {
+        try {
+          setInitialLoading(true);
+          const response = await fetch(`/api/advocates/${advocateId}`);
+          
+          if (!response.ok) {
+            throw new Error('Failed to load advocate data');
+          }
+          
+          const advocate = await response.json();
+          
+          // Populate form with advocate data
+          setFormData({
+            firstName: advocate.firstName,
+            lastName: advocate.lastName,
+            city: advocate.city,
+            degree: advocate.degree,
+            specialties: advocate.specialties || [],
+            yearsOfExperience: advocate.yearsOfExperience,
+            phoneNumber: advocate.phoneNumber.toString(),
+          });
+          
+          // Set selected specialties
+          setSelectedSpecialties(advocate.specialties || []);
+        } catch (err: any) {
+          setError(err.message || 'Failed to load advocate data');
+        } finally {
+          setInitialLoading(false);
+        }
+      };
+      
+      fetchAdvocate();
+    }
+  }, [advocateId, isEditMode]);
 
   /**
    * Handle form submission
@@ -84,8 +129,12 @@ export default function AddAdvocatePage() {
         yearsOfExperience: parseInt(formData.yearsOfExperience.toString(), 10)
       };
 
-      const response = await fetch('/api/advocates', {
-        method: 'POST',
+      // Use different endpoint and method for edit vs. create
+      const url = isEditMode ? `/api/advocates/${advocateId}` : '/api/advocates';
+      const method = isEditMode ? 'PATCH' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dataToSend),
       });
@@ -98,18 +147,6 @@ export default function AddAdvocatePage() {
 
       // Éxito
       setSuccess(true);
-      
-      // Limpiar el formulario
-      setFormData({
-        firstName: '',
-        lastName: '',
-        city: '',
-        degree: 'MD',
-        specialties: [],
-        yearsOfExperience: 1,
-        phoneNumber: '',
-      });
-      setSelectedSpecialties([]);
       
       // Redirigir a la lista después de un breve retraso
       setTimeout(() => {
@@ -131,7 +168,7 @@ export default function AddAdvocatePage() {
       <main className="container mx-auto px-6 py-8">
         <div className="mb-12 rounded-lg bg-white p-6 shadow-md">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-medium text-gray-800">Add New Advocate</h2>
+            <h2 className="text-2xl font-medium text-gray-800">{isEditMode ? 'Edit Advocate' : 'Add New Advocate'}</h2>
             <button
               type="button"
               onClick={() => router.push('/advocates')}
@@ -144,170 +181,191 @@ export default function AddAdvocatePage() {
             </button>
           </div>
           
-          {error && (
-            <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md">
-              {error}
+          {initialLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent"></div>
             </div>
-          )}
-          
-          {success && (
-            <div className="mb-4 p-3 bg-green-100 text-green-700 rounded-md">
-              Advocate added successfully! Redirecting...
-            </div>
-          )}
-          
-          <form onSubmit={handleSubmit}>
-            <div className="grid gap-6 mb-6 md:grid-cols-2">
-              <div>
-                <label className="block text-gray-700 mb-2" htmlFor="firstName">
-                  First Name
-                </label>
-                <input
-                  id="firstName"
-                  name="firstName"
-                  type="text"
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
-                  disabled={loading || success}
-                />
-              </div>
+          ) : (
+            <>
+              {error && (
+                <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md">
+                  {error}
+                </div>
+              )}
               
-              <div>
-                <label className="block text-gray-700 mb-2" htmlFor="lastName">
-                  Last Name
-                </label>
-                <input
-                  id="lastName"
-                  name="lastName"
-                  type="text"
-                  value={formData.lastName}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
-                  disabled={loading || success}
-                />
-              </div>
+              {success && (
+                <div className="mb-4 p-3 bg-emerald-100 text-emerald-700 rounded-md">
+                  Advocate {isEditMode ? 'updated' : 'added'} successfully! Redirecting...
+                </div>
+              )}
               
-              <div>
-                <label className="block text-gray-700 mb-2" htmlFor="city">
-                  City
-                </label>
-                <input
-                  id="city"
-                  name="city"
-                  type="text"
-                  value={formData.city}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
-                  disabled={loading || success}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-gray-700 mb-2" htmlFor="degree">
-                  Degree
-                </label>
-                <select
-                  id="degree"
-                  name="degree"
-                  value={formData.degree}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
-                  disabled={loading || success}
-                >
-                  <option value="MD">MD</option>
-                  <option value="PhD">PhD</option>
-                  <option value="MSW">MSW</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-gray-700 mb-2" htmlFor="yearsOfExperience">
-                  Years of Experience
-                </label>
-                <input
-                  id="yearsOfExperience"
-                  name="yearsOfExperience"
-                  type="number"
-                  min="1"
-                  max="50"
-                  value={formData.yearsOfExperience}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
-                  disabled={loading || success}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-gray-700 mb-2" htmlFor="phoneNumber">
-                  Phone Number
-                </label>
-                <input
-                  id="phoneNumber"
-                  name="phoneNumber"
-                  type="tel"
-                  pattern="[0-9]{10}"
-                  placeholder="5551234567"
-                  value={formData.phoneNumber}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
-                  disabled={loading || success}
-                />
-                <p className="text-xs text-gray-500 mt-1">10-digit number without spaces or dashes</p>
-              </div>
-            </div>
-            
-            <div className="mb-6">
-              <label className="block text-gray-700 mb-2">
-                Specialties
-              </label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {availableSpecialties.map(specialty => (
-                  <div key={specialty} className="flex items-center">
+              <form onSubmit={handleSubmit}>
+                <div className="grid gap-6 mb-6 md:grid-cols-2">
+                  <div>
+                    <label className="block text-gray-700 mb-2" htmlFor="firstName">
+                      First Name
+                    </label>
                     <input
-                      type="checkbox"
-                      id={`specialty-${specialty}`}
-                      checked={selectedSpecialties.includes(specialty)}
-                      onChange={() => handleSpecialtyToggle(specialty)}
-                      className="mr-2"
+                      id="firstName"
+                      name="firstName"
+                      type="text"
+                      value={formData.firstName}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      required
                       disabled={loading || success}
                     />
-                    <label htmlFor={`specialty-${specialty}`}>{specialty}</label>
                   </div>
-                ))}
-              </div>
-              {selectedSpecialties.length === 0 && (
-                <p className="text-xs text-red-500 mt-1">Please select at least one specialty</p>
-              )}
-            </div>
-            
-            <div className="flex justify-end space-x-4">
-              <button
-                type="button"
-                onClick={() => router.push('/advocates')}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                disabled={loading || success}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-                </svg>
-                Back to List
-              </button>
-              <button
-                type="submit"
-                disabled={loading || success || selectedSpecialties.length === 0}
-                className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-emerald-300"
-              >
-                {loading ? 'Saving...' : 'Add Advocate'}
-              </button>
-            </div>
-          </form>
+                  
+                  <div>
+                    <label className="block text-gray-700 mb-2" htmlFor="lastName">
+                      Last Name
+                    </label>
+                    <input
+                      id="lastName"
+                      name="lastName"
+                      type="text"
+                      value={formData.lastName}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      required
+                      disabled={loading || success}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-gray-700 mb-2" htmlFor="city">
+                      City
+                    </label>
+                    <input
+                      id="city"
+                      name="city"
+                      type="text"
+                      value={formData.city}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      required
+                      disabled={loading || success}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-gray-700 mb-2" htmlFor="degree">
+                      Degree
+                    </label>
+                    <select
+                      id="degree"
+                      name="degree"
+                      value={formData.degree}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      required
+                      disabled={loading || success}
+                    >
+                      <option value="MD">MD</option>
+                      <option value="PhD">PhD</option>
+                      <option value="MSW">MSW</option>
+                      <option value="LMFT">LMFT</option>
+                      <option value="PsyD">PsyD</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-gray-700 mb-2" htmlFor="yearsOfExperience">
+                      Years of Experience
+                    </label>
+                    <input
+                      id="yearsOfExperience"
+                      name="yearsOfExperience"
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={formData.yearsOfExperience}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      required
+                      disabled={loading || success}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-gray-700 mb-2" htmlFor="phoneNumber">
+                      Phone Number (10 digits)
+                    </label>
+                    <input
+                      id="phoneNumber"
+                      name="phoneNumber"
+                      type="text"
+                      pattern="[0-9]{10}"
+                      value={formData.phoneNumber}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      required
+                      disabled={loading || success}
+                      placeholder="e.g. 5551234567"
+                    />
+                  </div>
+                </div>
+                
+                <div className="mb-6">
+                  <label className="block text-gray-700 mb-2">
+                    Specialties (select at least one)
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {availableSpecialties.map((specialty) => (
+                      <div 
+                        key={specialty}
+                        onClick={() => !loading && !success && handleSpecialtyToggle(specialty)}
+                        className={`
+                          p-2 border rounded-md cursor-pointer 
+                          ${selectedSpecialties.includes(specialty) 
+                            ? 'bg-emerald-100 border-emerald-500' 
+                            : 'bg-white border-gray-300 hover:bg-gray-50'
+                          }
+                          ${(loading || success) ? 'opacity-60 cursor-not-allowed' : ''}
+                        `}
+                      >
+                        <div className="flex items-center">
+                          <div className={`
+                            w-4 h-4 mr-2 rounded-sm border
+                            ${selectedSpecialties.includes(specialty) 
+                              ? 'bg-emerald-500 border-emerald-500' 
+                              : 'bg-white border-gray-400'
+                            }
+                          `}>
+                            {selectedSpecialties.includes(specialty) && (
+                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                              </svg>
+                            )}
+                          </div>
+                          <span className="text-sm">{specialty}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-4">
+                  <button
+                    type="button"
+                    onClick={() => router.push('/advocates')}
+                    className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400"
+                    disabled={loading || success}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50"
+                    disabled={loading || success || initialLoading}
+                  >
+                    {loading ? 'Submitting...' : isEditMode ? 'Update Advocate' : 'Add Advocate'}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
         </div>
       </main>
       

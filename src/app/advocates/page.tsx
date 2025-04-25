@@ -11,6 +11,7 @@ import Pagination from '../../components/common/Pagination';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Role } from '../../lib/auth/types';
+import DeleteModal from '../../components/common/DeleteModal';
 
 /**
  * Advocates page component
@@ -31,6 +32,11 @@ export default function AdvocatesPage() {
     limit: 10,
     totalPages: 0
   });
+  
+  // State for delete confirmation modal
+  const [selectedAdvocate, setSelectedAdvocate] = useState<Advocate | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteStatus, setDeleteStatus] = useState<{success: boolean; message: string} | null>(null);
   
   // Filter state
   const [filters, setFilters] = useState({
@@ -194,6 +200,61 @@ export default function AdvocatesPage() {
     return numStr;
   };
 
+  /**
+   * Opens the delete confirmation modal for an advocate
+   */
+  const openDeleteModal = (advocate: Advocate) => {
+    setSelectedAdvocate(advocate);
+    setIsDeleteModalOpen(true);
+  };
+
+  /**
+   * Closes the delete confirmation modal
+   */
+  const closeDeleteModal = () => {
+    setIsDeleteModalOpen(false);
+    setTimeout(() => setSelectedAdvocate(null), 300);
+  };
+
+  /**
+   * Handles advocate deletion
+   */
+  const handleDelete = async (): Promise<void> => {
+    if (!selectedAdvocate) return;
+    
+    try {
+      setDeleteStatus(null);
+      
+      const response = await fetch(`/api/advocates/${selectedAdvocate.id}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to delete advocate');
+      }
+      
+      // Show success message
+      setDeleteStatus({
+        success: true,
+        message: `Advocate deleted successfully`
+      });
+      
+      // Refresh the data
+      fetchAdvocates(pagination.page, pagination.limit, filters);
+      
+      // Auto-dismiss the success message after 5 seconds
+      setTimeout(() => {
+        setDeleteStatus(null);
+      }, 5000);
+    } catch (err: any) {
+      setDeleteStatus({
+        success: false,
+        message: err.message
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Header />
@@ -337,6 +398,11 @@ export default function AdvocatesPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Contact
                       </th>
+                      {userRole === Role.ADMIN && (
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -385,6 +451,30 @@ export default function AdvocatesPage() {
                             {formatPhoneNumber(advocate.phoneNumber)}
                           </a>
                         </td>
+                        {userRole === Role.ADMIN && (
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                            <div className="flex space-x-2 justify-end">
+                              <Link
+                                href={`/admin/advocates/add?id=${advocate.id}`}
+                                className="p-1.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-700 transition-colors duration-200 shadow-sm flex items-center justify-center"
+                                title="Edit advocate"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </Link>
+                              <button
+                                onClick={() => openDeleteModal(advocate)}
+                                className="p-1.5 bg-emerald-800 text-white rounded-full hover:bg-emerald-900 transition-colors duration-200 shadow-sm flex items-center justify-center"
+                                title="Delete advocate"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -397,6 +487,25 @@ export default function AdvocatesPage() {
                 onPageChange={changePage}
                 className="mt-8"
               />
+
+              {/* Delete status message */}
+              {deleteStatus && (
+                <div className={`mt-4 p-3 rounded-md ${deleteStatus.success ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                  {deleteStatus.message}
+                </div>
+              )}
+
+              {/* Delete confirmation modal */}
+              {selectedAdvocate && (
+                <DeleteModal
+                  isOpen={isDeleteModalOpen}
+                  title="Delete Advocate"
+                  message="Are you sure you want to delete this advocate? This action cannot be undone."
+                  itemName={`${selectedAdvocate.firstName} ${selectedAdvocate.lastName}`}
+                  onClose={closeDeleteModal}
+                  onConfirm={handleDelete}
+                />
+              )}
             </>
           )}
         </div>
