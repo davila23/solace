@@ -19,6 +19,7 @@ Upon reviewing the original codebase, I identified several critical issues that 
 3. **Missing pagination** would cause performance issues with large datasets
 4. **No authentication system** limited administrative capabilities
 5. **Minimal error handling** would lead to poor user experience
+6. **Lack of state management** made it difficult to maintain consistency across components
 
 To address these issues, I completely restructured the application following Next.js best practices and implemented a robust set of features.
 
@@ -30,6 +31,11 @@ I rebuilt the architecture following a clear separation of concerns, implementin
 src/
 ├── app/                # Next.js App Router with routes
 ├── components/         # Reusable UI components
+├── redux/              # State management
+│   ├── slices/         # Domain-specific state slices
+│   ├── hooks.ts        # Custom Redux hooks
+│   ├── store.ts        # Store configuration
+│   └── types.ts        # TypeScript type definitions
 ├── services/           # Business logic layer
 ├── repositories/       # Data access layer
 ├── lib/                # Core utilities
@@ -59,17 +65,27 @@ I built a complete auth system to secure the application:
 - **Protected Routes**: Used Next.js middleware to secure admin routes
 - **Session Management**: Implemented secure login/logout flows with proper token handling
 
+### State Management with Redux
+
+I implemented Redux with Redux Toolkit for robust state management:
+
+- **Centralized State**: All application state managed in a single store
+- **Redux Toolkit**: Using modern Redux best practices for reduced boilerplate
+- **Typed State**: Comprehensive TypeScript integration for type safety
+- **Async Operations**: Efficient handling of API calls with Redux Thunks
+- **Optimized Renders**: Preventing unnecessary re-renders with selective subscriptions
+
 ### Client-Side Data Management
 
-I implemented SWR for more efficient data handling:
+The application uses an efficient data fetching strategy:
 
-- **SWR Library Integration**: Added Stale-While-Revalidate pattern for data fetching
-- **Automatic Data Refresh**: Data refreshes when users return to the application
-- **Cached Responses**: Reduces redundant network requests and improves performance
-- **Loading States**: Properly indicates when data is being loaded
-- **Error States**: Shows clear error messages when data fetching fails
+- **Redux Integration**: State synchronization with backend data
+- **Cached Responses**: Reduces redundant network requests
+- **Loading States**: Visual indicators during data fetching operations
+- **Error Handling**: Comprehensive error management with user-friendly messages
+- **Optimistic Updates**: UI updates immediately while changes are processed server-side
 
-The admin role can now create and manage advocate profiles, providing a complete management solution.
+The admin role can now create, update, and delete advocate profiles through a unified interface, with all changes properly reflected in the Redux store.
 
 ### API Security & Optimization
 
@@ -102,7 +118,8 @@ I implemented a testing framework to ensure code quality:
 
 - **Repository Pattern**: Implemented to separate data access from business logic
 - **Service Layer**: Created to encapsulate complex operations
-- **Custom React Hooks**: Developed for reusable frontend logic
+- **Redux Architecture**: Organized state management with slices for different domains
+- **Custom React-Redux Hooks**: Developed for type-safe state access
 - **TypeScript**: Used throughout for type safety and better developer experience
 - **JSDoc Documentation**: Added comprehensive code documentation
 
@@ -138,6 +155,13 @@ npm run db:setup
 # Start development server
 npm run dev
 ```
+
+### Demo Accounts
+
+You can log in with the following demo accounts:
+
+- **Admin:** username=admin, password=admin123
+- **User:** username=user, password=user123
 
 Visit http://localhost:3000 to explore the application.
 

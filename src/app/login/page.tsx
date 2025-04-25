@@ -1,7 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+
+// Redux imports
+import { useAppDispatch, useAppSelector } from '../../redux/hooks';
+import { loginUser, clearError } from '../../redux/slices/auth';
 
 /**
  * Login page component
@@ -10,54 +14,45 @@ import { useRouter } from 'next/navigation';
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [localError, setLocalError] = useState('');
   const router = useRouter();
+  const dispatch = useAppDispatch();
+  
+  // Get auth state from Redux
+  const { loading, error, authenticated } = useAppSelector(state => state.auth);
+
+  /**
+   * Redirect to advocates page if already authenticated
+   */
+  useEffect(() => {
+    if (authenticated) {
+      router.push('/advocates');
+    }
+    
+    // Clear any previous auth errors when component mounts
+    dispatch(clearError());
+  }, [authenticated, router, dispatch]);
 
   /**
    * Handle form submission
-   * Attempts to authenticate user with provided credentials
+   * Attempts to authenticate user with provided credentials using Redux
    */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
-
+    setLocalError('');
+    
     try {
-      console.log('Enviando solicitud de login para:', username);
+      // Dispatch Redux action to log in user
+      const resultAction = await dispatch(loginUser({ username, password })).unwrap();
       
-      // Agregamos un timeout para asegurarnos de que la solicitud se complete
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos timeout
-      
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      console.log('Respuesta recibida:', response.status);
-      const data = await response.json();
-      console.log('Datos recibidos:', data);
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Login failed');
-      }
-
-      console.log('Login exitoso, redirigiendo...');
-      // Pequeño retraso para asegurar que la cookie se establezca correctamente
-      setTimeout(() => {
+      // If login is successful, redirect to advocates page
+      if (resultAction && resultAction.user) {
         router.push('/advocates');
         router.refresh();
-      }, 500);
+      }
     } catch (err: any) {
-      console.error('Error durante el login:', err);
-      setError(err.message || 'Error de conexión. Inténtalo de nuevo.');
-    } finally {
-      setLoading(false);
+      console.error('Error during login:', err);
+      setLocalError(err.message || 'Connection error. Please try again.');
     }
   };
 
@@ -69,9 +64,9 @@ export default function LoginPage() {
           <p className="mt-2 text-gray-600">Sign in to access the Advocates platform</p>
         </div>
         
-        {error && (
+        {(localError || error) && (
           <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md">
-            {error}
+            {localError || error}
           </div>
         )}
         

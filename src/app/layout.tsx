@@ -7,6 +7,7 @@ import "../db";
 
 // Import providers
 import DatabaseInitProvider from "../providers/DatabaseInitProvider";
+import ReduxProvider from "../providers/ReduxProvider";
 
 // Load Inter font with Latin subset
 const inter = Inter({ subsets: ["latin"], display: "swap" });
@@ -43,7 +44,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <DatabaseInitProvider>
-          {children}
+          <ReduxProvider>
+            {children}
+          </ReduxProvider>
         </DatabaseInitProvider>
       </body>
     </html>

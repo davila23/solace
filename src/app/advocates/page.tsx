@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Advocate } from '../../types/advocates';
-import { PaginationInfo } from '../../types/common/pagination';
 import Header from '../../components/layout/Header';
 import Footer from '../../components/layout/Footer';
 import Navigation from '../../components/layout/Navigation';
@@ -13,6 +12,11 @@ import { useRouter } from 'next/navigation';
 import { Role } from '../../lib/auth/types';
 import DeleteModal from '../../components/common/DeleteModal';
 
+// Redux imports
+import { useAppDispatch, useAppSelector } from '../../redux/hooks';
+import { fetchAdvocates, setFilterParams, resetFilters, deleteAdvocate } from '../../redux/slices/advocates';
+import { openModal, closeModal } from '../../redux/slices/ui';
+
 /**
  * Advocates page component
  * Displays a searchable, filterable list of healthcare advocates
@@ -20,127 +24,73 @@ import DeleteModal from '../../components/common/DeleteModal';
  */
 export default function AdvocatesPage() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   
-  // State management
-  const [advocates, setAdvocates] = useState<Advocate[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [pagination, setPagination] = useState<PaginationInfo>({
-    total: 0,
-    page: 1,
-    limit: 10,
-    totalPages: 0
-  });
+  // Get advocates data from Redux store
+  const { advocates, pagination, filterParams, status, error } = useAppSelector(state => state.advocates);
   
-  // State for delete confirmation modal
+  // Get auth data from Redux store
+  const { user } = useAppSelector(state => state.auth);
+  
+  // Get UI state from Redux store
+  const { modal } = useAppSelector(state => state.ui);
+  
+  // Local state for delete confirmation modal
   const [selectedAdvocate, setSelectedAdvocate] = useState<Advocate | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteStatus, setDeleteStatus] = useState<{success: boolean; message: string} | null>(null);
   
-  // Filter state
-  const [filters, setFilters] = useState({
-    search: '',
-    specialty: '',
-    city: ''
-  });
-  
-  // Available filter options
+  // Available filter options - kept in local state since they're derived from API data
   const [availableSpecialties, setAvailableSpecialties] = useState<string[]>([]);
   const [availableCities, setAvailableCities] = useState<string[]>([]);
 
   /**
-   * Fetches advocates data from the API
-   * @param {number} page - Page number to fetch
-   * @param {number} limit - Number of records per page
-   * @param {Object} filterParams - Filter parameters
+   * Extract available filter options from advocate data
+   * @param {Advocate[]} advocateData - Array of advocate data
    */
-  const fetchAdvocates = useCallback(async (
-    page = 1, 
-    limit = 10, 
-    filterParams = filters
-  ) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Build query parameters
-      const params = new URLSearchParams();
-      params.append('page', page.toString());
-      params.append('limit', limit.toString());
+  const extractFilterOptions = useCallback((advocateData: Advocate[]) => {
+    if (advocateData && advocateData.length > 0 && !filterParams.specialty && !filterParams.city) {
+      // Extract and deduplicate specialties
+      const allSpecialties = advocateData.flatMap((advocate: Advocate) => advocate.specialties);
+      const uniqueSpecialties = Array.from(new Set(allSpecialties)) as string[];
+      setAvailableSpecialties(uniqueSpecialties);
       
-      if (filterParams.search) params.append('search', filterParams.search);
-      if (filterParams.specialty) params.append('specialty', filterParams.specialty);
-      if (filterParams.city) params.append('city', filterParams.city);
-      
-      // Fetch data from API
-      const response = await fetch(`/api/advocates?${params.toString()}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch data');
-      }
-      
-      const data = await response.json();
-      
-      // Update state with fetched data
-      setAdvocates(data.data || []);
-      setPagination(data.pagination || { total: 0, page: 1, limit: 10, totalPages: 0 });
-      
-      // Extract available filter options from data
-      if (data.data && data.data.length > 0 && !filterParams.specialty && !filterParams.city) {
-        // Extract and deduplicate specialties
-        const allSpecialties = data.data.flatMap((advocate: Advocate) => advocate.specialties);
-        const uniqueSpecialties = Array.from(new Set(allSpecialties)) as string[];
-        setAvailableSpecialties(uniqueSpecialties);
-        
-        // Extract and deduplicate cities
-        const allCities = data.data.map((advocate: Advocate) => advocate.city);
-        const uniqueCities = Array.from(new Set(allCities)) as string[];
-        setAvailableCities(uniqueCities);
-      }
-    } catch (err) {
-      console.error('Error fetching advocates:', err);
-      setError('Failed to load advocates data. Please try again.');
-    } finally {
-      setLoading(false);
+      // Extract and deduplicate cities
+      const allCities = advocateData.map((advocate: Advocate) => advocate.city);
+      const uniqueCities = Array.from(new Set(allCities)) as string[];
+      setAvailableCities(uniqueCities);
     }
-  }, [filters]);
+  }, [filterParams.specialty, filterParams.city]);
 
-  // Check authentication status and fetch user role
+  // Initial data fetch and extract filter options when advocates data changes
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('/api/auth/check');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.authenticated && data.user) {
-            setUserRole(data.user.role);
-          }
-        }
-      } catch (error) {
-        console.error('Error checking authentication:', error);
-      }
-    };
-    
-    checkAuth();
-  }, []);
-
-  // Initial data fetch
+    dispatch(fetchAdvocates({
+      page: pagination.page,
+      limit: pagination.limit,
+      filters: filterParams
+    }));
+  }, [dispatch, pagination.page, pagination.limit, filterParams]);
+  
+  // Extract filter options when advocate data changes
   useEffect(() => {
-    fetchAdvocates();
-  }, [fetchAdvocates]);
+    if (advocates.length > 0) {
+      extractFilterOptions(advocates);
+    }
+  }, [advocates, filterParams, extractFilterOptions]);
 
   /**
-   * Handles search input changes
+   * Handles search input changes with debouncing
    * @param {React.ChangeEvent<HTMLInputElement>} e - Input change event
    */
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    setFilters(prev => ({ ...prev, search: value }));
     
     // Debounce search to prevent excessive API calls
     const timer = setTimeout(() => {
-      fetchAdvocates(1, pagination.limit, { ...filters, search: value });
+      dispatch(setFilterParams({
+        ...filterParams,
+        search: value
+      }));
     }, 500);
     
     return () => clearTimeout(timer);
@@ -152,8 +102,10 @@ export default function AdvocatesPage() {
    */
   const handleSpecialtyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    setFilters(prev => ({ ...prev, specialty: value }));
-    fetchAdvocates(1, pagination.limit, { ...filters, specialty: value });
+    dispatch(setFilterParams({
+      ...filterParams,
+      specialty: value
+    }));
   };
 
   /**
@@ -162,20 +114,17 @@ export default function AdvocatesPage() {
    */
   const handleCityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    setFilters(prev => ({ ...prev, city: value }));
-    fetchAdvocates(1, pagination.limit, { ...filters, city: value });
+    dispatch(setFilterParams({
+      ...filterParams,
+      city: value
+    }));
   };
 
   /**
    * Resets all filters
    */
-  const resetFilters = () => {
-    setFilters({
-      search: '',
-      specialty: '',
-      city: ''
-    });
-    fetchAdvocates(1, pagination.limit, { search: '', specialty: '', city: '' });
+  const handleResetFilters = () => {
+    dispatch(resetFilters());
   };
 
   /**
@@ -184,7 +133,11 @@ export default function AdvocatesPage() {
    */
   const changePage = (page: number) => {
     if (page < 1 || page > pagination.totalPages) return;
-    fetchAdvocates(page, pagination.limit, filters);
+    dispatch(fetchAdvocates({
+      page,
+      limit: pagination.limit,
+      filters: filterParams
+    }));
   };
 
   /**
@@ -201,56 +154,46 @@ export default function AdvocatesPage() {
   };
 
   /**
-   * Opens the delete confirmation modal for an advocate
+   * Opens delete confirmation modal
+   * @param {Advocate} advocate - Advocate to delete
    */
   const openDeleteModal = (advocate: Advocate) => {
     setSelectedAdvocate(advocate);
     setIsDeleteModalOpen(true);
+    setDeleteStatus(null);
   };
 
   /**
-   * Closes the delete confirmation modal
+   * Closes delete confirmation modal
    */
   const closeDeleteModal = () => {
     setIsDeleteModalOpen(false);
-    setTimeout(() => setSelectedAdvocate(null), 300);
+    setSelectedAdvocate(null);
   };
 
   /**
    * Handles advocate deletion
    */
-  const handleDelete = async (): Promise<void> => {
+  const handleDeleteAdvocate = async () => {
     if (!selectedAdvocate) return;
     
     try {
-      setDeleteStatus(null);
+      // Use Redux action to delete advocate
+      await dispatch(deleteAdvocate(selectedAdvocate.id)).unwrap();
       
-      const response = await fetch(`/api/advocates/${selectedAdvocate.id}`, {
-        method: 'DELETE',
-      });
+      // Update UI after successful deletion
+      setDeleteStatus({ success: true, message: 'Advocate deleted successfully' });
       
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to delete advocate');
-      }
-      
-      // Show success message
-      setDeleteStatus({
-        success: true,
-        message: `Advocate deleted successfully`
-      });
-      
-      // Refresh the data
-      fetchAdvocates(pagination.page, pagination.limit, filters);
-      
-      // Auto-dismiss the success message after 5 seconds
+      // Close modal after a short delay
       setTimeout(() => {
-        setDeleteStatus(null);
-      }, 5000);
-    } catch (err: any) {
-      setDeleteStatus({
-        success: false,
-        message: err.message
+        closeDeleteModal();
+      }, 1500);
+      
+    } catch (error) {
+      console.error('Error deleting advocate:', error);
+      setDeleteStatus({ 
+        success: false, 
+        message: error instanceof Error ? error.message : 'An error occurred while deleting'
       });
     }
   };
@@ -287,7 +230,7 @@ export default function AdvocatesPage() {
               <input
                 type="text"
                 id="search"
-                value={filters.search}
+                value={filterParams.search}
                 onChange={handleSearch}
                 placeholder="Enter name..."
                 className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
@@ -301,7 +244,7 @@ export default function AdvocatesPage() {
               </label>
               <select
                 id="specialty"
-                value={filters.specialty}
+                value={filterParams.specialty}
                 onChange={handleSpecialtyChange}
                 className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
               >
@@ -319,7 +262,7 @@ export default function AdvocatesPage() {
               </label>
               <select
                 id="city"
-                value={filters.city}
+                value={filterParams.city}
                 onChange={handleCityChange}
                 className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
               >
@@ -336,12 +279,12 @@ export default function AdvocatesPage() {
             <div className="flex space-x-4">
               <Button 
                 variant="secondary" 
-                onClick={resetFilters}
+                onClick={handleResetFilters}
               >
                 Reset Filters
               </Button>
               
-              {userRole === Role.ADMIN && (
+              {user?.role === Role.ADMIN && (
                 <Button 
                   variant="primary"
                   onClick={() => router.push('/admin/advocates/add')}
@@ -369,7 +312,7 @@ export default function AdvocatesPage() {
           )}
           
           {/* Loading state */}
-          {loading ? (
+          {status === 'loading' && advocates.length === 0 ? (
             <div className="flex justify-center py-8">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent"></div>
             </div>
@@ -398,7 +341,7 @@ export default function AdvocatesPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Contact
                       </th>
-                      {userRole === Role.ADMIN && (
+                      {user?.role === Role.ADMIN && (
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Actions
                         </th>
@@ -451,7 +394,7 @@ export default function AdvocatesPage() {
                             {formatPhoneNumber(advocate.phoneNumber)}
                           </a>
                         </td>
-                        {userRole === Role.ADMIN && (
+                        {user?.role === Role.ADMIN && (
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                             <div className="flex space-x-2 justify-end">
                               <Link
@@ -488,23 +431,38 @@ export default function AdvocatesPage() {
                 className="mt-8"
               />
 
-              {/* Delete status message */}
-              {deleteStatus && (
-                <div className={`mt-4 p-3 rounded-md ${deleteStatus.success ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                  {deleteStatus.message}
-                </div>
-              )}
-
               {/* Delete confirmation modal */}
-              {selectedAdvocate && (
+              {isDeleteModalOpen && selectedAdvocate && (
                 <DeleteModal
                   isOpen={isDeleteModalOpen}
-                  title="Delete Advocate"
-                  message="Are you sure you want to delete this advocate? This action cannot be undone."
+                  title="Confirm Delete"
+                  message="Are you sure you want to delete this advocate?"
                   itemName={`${selectedAdvocate.firstName} ${selectedAdvocate.lastName}`}
                   onClose={closeDeleteModal}
-                  onConfirm={handleDelete}
+                  onConfirm={handleDeleteAdvocate}
                 />
+              )}
+              
+              {/* Delete status notification */}
+              {deleteStatus && (
+                <div className={`fixed bottom-4 right-4 p-4 rounded-md shadow-lg max-w-md ${deleteStatus.success ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      {deleteStatus.success ? (
+                        <svg className="h-5 w-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <svg className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium">{deleteStatus.message}</p>
+                    </div>
+                  </div>
+                </div>
               )}
             </>
           )}
